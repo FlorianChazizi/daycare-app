@@ -55,9 +55,10 @@ exports.generateChildInviteCode = onCall(async (request) => {
     .collection("schools").doc(schoolId)
     .collection("inviteCodes").doc(code)
     .set({
-      childId,
-      used: false,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+       code,
+        childId,
+        used: false,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
   return { code };
@@ -119,4 +120,62 @@ exports.createSchool = onCall(async (request) => {
   });
 
   return { uid: userRecord.uid, schoolId };
+});
+
+exports.redeemInviteCode = onCall(async (request) => {
+  const caller = request.auth;
+  if (!caller) {
+    throw new HttpsError("unauthenticated", "You must be signed in.");
+  }
+
+  const { code } = request.data;
+  if (!code) {
+    throw new HttpsError("invalid-argument", "code is required.");
+  }
+
+  const normalizedCode = code.trim().toUpperCase();
+
+  const matches = await admin.firestore()
+    .collectionGroup("inviteCodes")
+    .where("code", "==", normalizedCode)
+    .limit(1)
+    .get();
+
+  if (matches.empty) {
+    throw new HttpsError("not-found", "Invalid invite code.");
+  }
+
+  const codeDoc = matches.docs[0];
+  const codeData = codeDoc.data();
+
+  if (codeData.used) {
+    throw new HttpsError("failed-precondition", "This code has already been used.");
+  }
+
+  const schoolRef = codeDoc.ref.parent.parent;
+  const schoolId = schoolRef.id;
+  const childId = codeData.childId;
+
+  await admin.auth().setCustomUserClaims(caller.uid, { role: "parent", schoolId });
+
+  const parentRef = schoolRef.collection("parents").doc(caller.uid);
+  const parentSnap = await parentRef.get();
+  const existingChildren = parentSnap.exists ? (parentSnap.data().children || []) : [];
+  const updatedChildren = existingChildren.includes(childId)
+    ? existingChildren
+    : [...existingChildren, childId];
+
+  await parentRef.set({
+    phone: caller.token.phone_number || null,
+    children: updatedChildren,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true });
+
+  await codeDoc.ref.update({
+    used: true,
+    redeemedBy: caller.uid,
+    redeemedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  return { schoolId, childId };
 });
