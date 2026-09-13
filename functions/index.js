@@ -179,3 +179,33 @@ exports.redeemInviteCode = onCall(async (request) => {
 
   return { schoolId, childId };
 });
+
+exports.deleteStaffAccount = onCall(async (request) => {
+  const caller = request.auth;
+  if (!caller || caller.token.role !== "admin") {
+    throw new HttpsError("permission-denied", "Only school admins can remove staff.");
+  }
+
+  const { uid } = request.data;
+  if (!uid) throw new HttpsError("invalid-argument", "uid is required.");
+
+  if (uid === caller.uid) {
+    throw new HttpsError("failed-precondition", "You can't remove your own account.");
+  }
+
+  const schoolId = caller.token.schoolId;
+  const staffRef = admin.firestore()
+    .collection("schools").doc(schoolId)
+    .collection("staff").doc(uid);
+
+  const staffSnap = await staffRef.get();
+  if (!staffSnap.exists) {
+    throw new HttpsError("not-found", "Staff member not found in your school.");
+  }
+
+  await admin.auth().deleteUser(uid);
+  await staffRef.delete();
+
+  logger.info(`Deleted staff ${uid} from school ${schoolId}`);
+  return { uid };
+});

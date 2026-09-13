@@ -1,16 +1,25 @@
 import { useCallback, useEffect, useState } from "react";
-import { collection, getDocs, orderBy, query } from "firebase/firestore";
+import { collection, doc, getDocs, orderBy, query, updateDoc } from "firebase/firestore";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { db } from "../../lib/firebase";
+import { useAuth } from "../../context/AuthContext";
 import Modal from "../UI/Modal";
+import { IconPencil, IconTrash, IconCheck, IconX } from "../UI/ActionIcons";
 
 export default function StaffSection({ schoolId, classes }) {
+  const { user } = useAuth();
   const [staff, setStaff] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState({ name: "", email: "", password: "", role: "teacher", classId: "" });
   const [status, setStatus] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState({ name: "", classId: "" });
+  const [savingId, setSavingId] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
+  const [rowError, setRowError] = useState(null);
 
   const loadStaff = useCallback(async () => {
     if (!schoolId) return;
@@ -68,6 +77,47 @@ export default function StaffSection({ schoolId, classes }) {
     }
   }
 
+  function startEdit(member) {
+    setRowError(null);
+    setEditingId(member.id);
+    setEditForm({ name: member.name, classId: member.classId || "" });
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setEditForm({ name: "", classId: "" });
+  }
+
+  async function saveEdit(member) {
+    if (!editForm.name.trim()) return;
+    setSavingId(member.id);
+    await updateDoc(doc(db, "schools", schoolId, "staff", member.id), {
+      name: editForm.name.trim(),
+      ...(member.role === "teacher" ? { classId: editForm.classId || null } : {}),
+    });
+    setSavingId(null);
+    setEditingId(null);
+    setEditForm({ name: "", classId: "" });
+    loadStaff();
+  }
+
+  async function handleDelete(member) {
+    if (member.id === user?.uid) return;
+    if (!window.confirm(`Remove ${member.name}? They will lose access immediately, and this cannot be undone.`)) return;
+    setDeletingId(member.id);
+    setRowError(null);
+    try {
+      const functions = getFunctions();
+      const deleteStaffAccount = httpsCallable(functions, "deleteStaffAccount");
+      await deleteStaffAccount({ uid: member.id });
+      loadStaff();
+    } catch (err) {
+      setRowError(err.message);
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   return (
     <section>
       <div className="row-header row-header--tight">
@@ -75,31 +125,109 @@ export default function StaffSection({ schoolId, classes }) {
         <button className="btn" onClick={() => setModalOpen(true)}>+ New staff</button>
       </div>
 
+      {rowError && <p className="status-message error">{rowError}</p>}
+
       {loading ? (
         <p>Loading...</p>
       ) : staff.length === 0 ? (
         <p>No staff yet.</p>
       ) : (
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Email</th>
-              <th>Role</th>
-              <th>Class</th>
-            </tr>
-          </thead>
-          <tbody>
-            {staff.map((s) => (
-              <tr key={s.id}>
-                <td>{s.name}</td>
-                <td>{s.email}</td>
-                <td>{s.role}</td>
-                <td>{s.role === "teacher" ? classNameFor(s.classId) : "—"}</td>
+        <div className="table-scroll">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Role</th>
+                <th>Class</th>
+                <th>Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {staff.map((s) => {
+                const isEditing = editingId === s.id;
+                const isSelf = s.id === user?.uid;
+                return (
+                  <tr key={s.id}>
+                    <td>
+                      {isEditing ? (
+                        <input
+                          className="inline-edit-input"
+                          value={editForm.name}
+                          onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                          autoFocus
+                        />
+                      ) : (
+                        s.name
+                      )}
+                    </td>
+                    <td>{s.email}</td>
+                    <td>{s.role}</td>
+                    <td>
+                      {isEditing && s.role === "teacher" ? (
+                        <select
+                          className="inline-edit-select"
+                          value={editForm.classId}
+                          onChange={(e) => setEditForm({ ...editForm, classId: e.target.value })}
+                        >
+                          <option value="">Unassigned</option>
+                          {classes.map((c) => (
+                            <option key={c.id} value={c.id}>{c.name}</option>
+                          ))}
+                        </select>
+                      ) : s.role === "teacher" ? (
+                        classNameFor(s.classId)
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                    <td>
+                      {isEditing ? (
+                        <span className="chip-actions">
+                          <button
+                            type="button"
+                            className="icon-btn icon-btn--confirm"
+                            onClick={() => saveEdit(s)}
+                            disabled={savingId === s.id}
+                            aria-label="Save"
+                            title="Save"
+                          >
+                            <IconCheck />
+                          </button>
+                          <button type="button" className="icon-btn" onClick={cancelEdit} aria-label="Cancel" title="Cancel">
+                            <IconX />
+                          </button>
+                        </span>
+                      ) : (
+                        <span className="chip-actions">
+                          <button
+                            type="button"
+                            className="icon-btn"
+                            onClick={() => startEdit(s)}
+                            aria-label="Edit"
+                            title="Edit"
+                          >
+                            <IconPencil />
+                          </button>
+                          <button
+                            type="button"
+                            className="icon-btn icon-btn--danger"
+                            onClick={() => handleDelete(s)}
+                            disabled={isSelf || deletingId === s.id}
+                            aria-label="Delete"
+                            title={isSelf ? "You can't remove your own account" : "Delete"}
+                          >
+                            <IconTrash />
+                          </button>
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)}>
