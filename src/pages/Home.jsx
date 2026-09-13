@@ -1,21 +1,64 @@
 import { Link } from "react-router-dom";
 
+function IconClipboardCheck() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="5" y="4" width="14" height="17" rx="2" />
+      <path d="M9 4V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1" />
+      <path d="M9 12l2 2 4-4" />
+    </svg>
+  );
+}
+
+function IconBell() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6 9a6 6 0 0 1 12 0c0 4 1.5 5.5 2 6H4c.5-.5 2-2 2-6z" />
+      <path d="M10 19a2 2 0 0 0 4 0" />
+    </svg>
+  );
+}
+
+function IconGrid() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="7" height="7" rx="1.5" />
+      <rect x="14" y="3" width="7" height="7" rx="1.5" />
+      <rect x="3" y="14" width="7" height="7" rx="1.5" />
+      <rect x="14" y="14" width="7" height="7" rx="1.5" />
+    </svg>
+  );
+}
+
+function IconShield() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6l7-3z" />
+      <path d="M9.5 12l1.8 1.8L15 10.3" />
+    </svg>
+  );
+}
+
 const FEATURES = [
   {
     title: "Για εκπαιδευτικούς",
     text: "Καταγράψτε παρουσίες, γεύματα, ύπνο και διάθεση σε λίγα δευτερόλεπτα, ανά τμήμα.",
+    Icon: IconClipboardCheck,
   },
   {
     title: "Για γονείς",
     text: "Δείτε την ημέρα του παιδιού σας τη στιγμή που καταγράφεται, χωρίς τηλεφωνήματα.",
+    Icon: IconBell,
   },
   {
     title: "Για διευθυντές",
     text: "Διαχειριστείτε τμήματα, προσωπικό, ανακοινώσεις και εβδομαδιαίο μενού από ένα σημείο.",
+    Icon: IconGrid,
   },
   {
     title: "Ασφάλεια & ιδιωτικότητα",
     text: "Κάθε σχολείο βλέπει μόνο τα δικά του δεδομένα. Πρόσβαση μόνο στους κατάλληλους ανθρώπους.",
+    Icon: IconShield,
   },
 ];
 
@@ -73,6 +116,9 @@ export default function Home() {
         <div className="feature-grid">
           {FEATURES.map((f) => (
             <div key={f.title} className="feature-card">
+              <div className="feature-icon">
+                <f.Icon />
+              </div>
               <h3>{f.title}</h3>
               <p>{f.text}</p>
             </div>

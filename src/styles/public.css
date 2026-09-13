@@ -15,6 +15,7 @@ html {
 }
 
 .public-header {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -22,6 +23,46 @@ html {
   max-width: 1100px;
   width: 100%;
   margin: 0 auto;
+}
+
+.public-menu-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  padding: 8px;
+  cursor: pointer;
+  z-index: 30;
+}
+
+.hamburger {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  width: 22px;
+  height: 16px;
+}
+
+.hamburger span {
+  display: block;
+  height: 2px;
+  width: 100%;
+  background: var(--color-text);
+  border-radius: 2px;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.hamburger--open span:nth-child(1) {
+  transform: translateY(7px) rotate(45deg);
+}
+
+.hamburger--open span:nth-child(2) {
+  opacity: 0;
+}
+
+.hamburger--open span:nth-child(3) {
+  transform: translateY(-7px) rotate(-45deg);
 }
 
 .public-brand {
@@ -203,6 +244,25 @@ html {
   border: 1px solid var(--color-border);
   border-radius: 14px;
   padding: 24px;
+  text-align: center;
+  
+}
+
+.feature-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--color-success-bg);
+  color: var(--color-primary-dark);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 14px;
+}
+
+.feature-icon svg {
+  width: 22px;
+  height: 22px;
 }
 
 .feature-card h3 {
@@ -371,8 +431,35 @@ html {
     padding: 16px 20px;
   }
 
+  .public-menu-toggle {
+    display: inline-flex;
+  }
+
   .public-nav {
-    gap: 14px;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+    padding: 24px 20px 32px;
+    background: var(--color-bg);
+    border-bottom: 1px solid var(--color-border);
+    z-index: 20;
+  }
+
+  .public-nav--open {
+    display: flex;
+  }
+
+  .public-nav a {
+    font-size: 16px;
+  }
+
+  .landing {
+    padding: 0 20px;
   }
 
   .hero-title {
@@ -381,5 +468,17 @@ html {
 
   .hero-actions {
     flex-direction: column;
+  }
+
+  .cta-final {
+    padding: 36px 20px;
+  }
+
+  .legal-page {
+    padding: 32px 20px 56px;
+  }
+
+  .not-found {
+    padding: 64px 20px;
   }
 }
