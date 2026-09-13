@@ -19,6 +19,8 @@
   color: var(--color-text);
   padding: 0 8px;
   margin-bottom: 24px;
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 .dashboard-nav {
@@ -29,13 +31,35 @@
 }
 
 .dashboard-nav-link {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 10px;
   padding: 10px 12px;
   border-radius: 8px;
   font-size: 14px;
   color: var(--color-text-muted);
   text-decoration: none;
   transition: background 0.15s, color 0.15s;
+}
+
+.dashboard-nav-icon {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dashboard-nav-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.dashboard-nav-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .dashboard-nav-link:hover {
@@ -51,6 +75,9 @@
 
 .dashboard-logout {
   margin-top: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
   border: none;
   border-radius: 8px;
   padding: 10px 12px;
@@ -90,4 +117,33 @@
   padding: 2rem;
   flex: 1;
   background: var(--color-bg);
+}
+
+@media (max-width: 768px) {
+  .dashboard-sidebar {
+    width: 64px;
+    padding: 1rem 0.5rem;
+  }
+
+  .dashboard-brand {
+    display: none;
+  }
+
+  .dashboard-nav-link,
+  .dashboard-logout {
+    justify-content: center;
+    padding: 10px 4px;
+  }
+
+  .dashboard-nav-label {
+    display: none;
+  }
+
+  .dashboard-header {
+    padding: 1rem 1.25rem;
+  }
+
+  .dashboard-main {
+    padding: 1.25rem;
+  }
 }

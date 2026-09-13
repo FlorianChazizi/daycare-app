@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from "react";
 import { collection, doc, getDocs, setDoc } from "firebase/firestore";
 import { db } from "../../lib/firebase";
 import { useAuth } from "../../context/AuthContext";
-import Modal from "../../components/UI/Modal";
 
 function toDateKey(date) {
   return date.toISOString().slice(0, 10);
@@ -19,6 +18,8 @@ function getWeekdaysInMonth(year, month) {
   return days;
 }
 
+const EMPTY_MEAL = { breakfast: "", lunch: "", snack: "" };
+
 export default function Menu() {
   const { claims } = useAuth();
   const schoolId = claims?.schoolId;
@@ -28,9 +29,9 @@ export default function Menu() {
   });
   const [entries, setEntries] = useState({});
   const [loading, setLoading] = useState(true);
-  const [editingDate, setEditingDate] = useState(null);
-  const [form, setForm] = useState({ breakfast: "", lunch: "", snack: "" });
-  const [submitting, setSubmitting] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [draft, setDraft] = useState({});
+  const [saving, setSaving] = useState(false);
 
   const days = getWeekdaysInMonth(cursor.year, cursor.month);
 
@@ -50,27 +51,68 @@ export default function Menu() {
     load();
   }, [load]);
 
-  function openEditor(date) {
-    const key = toDateKey(date);
-    const existing = entries[key];
-    setForm({
-      breakfast: existing?.breakfast || "",
-      lunch: existing?.lunch || "",
-      snack: existing?.snack || "",
+  function startEditMonth() {
+    const initialDraft = {};
+    days.forEach((date) => {
+      const key = toDateKey(date);
+      initialDraft[key] = { ...EMPTY_MEAL, ...(entries[key] || {}) };
     });
-    setEditingDate(key);
+    setDraft(initialDraft);
+    setEditMode(true);
   }
 
-  async function handleSubmit(e) {
-    e.preventDefault();
-    setSubmitting(true);
-    await setDoc(doc(db, "schools", schoolId, "menu", editingDate), {
-      breakfast: form.breakfast.trim(),
-      lunch: form.lunch.trim(),
-      snack: form.snack.trim(),
+  function cancelEditMonth() {
+    setEditMode(false);
+    setDraft({});
+  }
+
+  function updateDraftField(key, field, value) {
+    setDraft((prev) => ({
+      ...prev,
+      [key]: { ...prev[key], [field]: value },
+    }));
+  }
+
+  function copyToSameWeekday(sourceDate) {
+    const sourceKey = toDateKey(sourceDate);
+    const sourceMeal = draft[sourceKey];
+    const weekday = sourceDate.getDay();
+    setDraft((prev) => {
+      const next = { ...prev };
+      days.forEach((date) => {
+        if (date.getDay() === weekday) {
+          next[toDateKey(date)] = { ...sourceMeal };
+        }
+      });
+      return next;
     });
-    setSubmitting(false);
-    setEditingDate(null);
+  }
+
+  async function saveMonth() {
+    setSaving(true);
+    const writes = days
+      .map((date) => {
+        const key = toDateKey(date);
+        const current = { ...EMPTY_MEAL, ...(entries[key] || {}) };
+        const next = draft[key] || EMPTY_MEAL;
+        const trimmed = {
+          breakfast: next.breakfast.trim(),
+          lunch: next.lunch.trim(),
+          snack: next.snack.trim(),
+        };
+        const changed =
+          current.breakfast !== trimmed.breakfast ||
+          current.lunch !== trimmed.lunch ||
+          current.snack !== trimmed.snack;
+        if (!changed) return null;
+        return setDoc(doc(db, "schools", schoolId, "menu", key), trimmed);
+      })
+      .filter(Boolean);
+
+    await Promise.all(writes);
+    setSaving(false);
+    setEditMode(false);
+    setDraft({});
     load();
   }
 
@@ -88,67 +130,92 @@ export default function Menu() {
       <div className="row-header">
         <h2 className="section-heading">Menu — {monthLabel}</h2>
         <div>
-          <button className="btn" onClick={() => shiftMonth(-1)}>Prev</button>
-          <button className="btn" onClick={() => shiftMonth(1)}>Next</button>
+          <button className="btn" onClick={() => shiftMonth(-1)} disabled={editMode}>Prev</button>
+          <button className="btn" onClick={() => shiftMonth(1)} disabled={editMode}>Next</button>
+          {editMode ? (
+            <>
+              <button className="btn" onClick={cancelEditMonth} disabled={saving}>Cancel</button>
+              <button className="btn btn-success-active" onClick={saveMonth} disabled={saving}>
+                {saving ? "Saving..." : "Save month"}
+              </button>
+            </>
+          ) : (
+            <button className="btn" onClick={startEditMonth}>Edit month</button>
+          )}
         </div>
       </div>
 
       {loading ? (
         <p>Loading...</p>
       ) : (
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Breakfast</th>
-              <th>Lunch</th>
-              <th>Snack</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {days.map((date) => {
-              const key = toDateKey(date);
-              const entry = entries[key] || {};
-              return (
-                <tr key={key}>
-                  <td>{date.toLocaleDateString([], { weekday: "short", day: "numeric" })}</td>
-                  <td>{entry.breakfast || "—"}</td>
-                  <td>{entry.lunch || "—"}</td>
-                  <td>{entry.snack || "—"}</td>
-                  <td>
-                    <button className="btn" onClick={() => openEditor(date)}>Edit</button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        <div className="table-scroll">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Breakfast</th>
+                <th>Lunch</th>
+                <th>Snack</th>
+                {editMode && <th></th>}
+              </tr>
+            </thead>
+            <tbody>
+              {days.map((date) => {
+                const key = toDateKey(date);
+                const entry = entries[key] || {};
+                const draftEntry = draft[key] || EMPTY_MEAL;
+                const weekdayLabel = date.toLocaleDateString([], { weekday: "long" });
+                return (
+                  <tr key={key}>
+                    <td>{date.toLocaleDateString([], { weekday: "short", day: "numeric" })}</td>
+                    {editMode ? (
+                      <>
+                        <td>
+                          <input
+                            className="inline-edit-input"
+                            value={draftEntry.breakfast}
+                            onChange={(e) => updateDraftField(key, "breakfast", e.target.value)}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            className="inline-edit-input"
+                            value={draftEntry.lunch}
+                            onChange={(e) => updateDraftField(key, "lunch", e.target.value)}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            className="inline-edit-input"
+                            value={draftEntry.snack}
+                            onChange={(e) => updateDraftField(key, "snack", e.target.value)}
+                          />
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            className="btn"
+                            onClick={() => copyToSameWeekday(date)}
+                            title={`Copy this day's meals to every ${weekdayLabel} this month`}
+                          >
+                            Copy to all {weekdayLabel}s
+                          </button>
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td>{entry.breakfast || "—"}</td>
+                        <td>{entry.lunch || "—"}</td>
+                        <td>{entry.snack || "—"}</td>
+                      </>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
-
-      <Modal open={!!editingDate} onClose={() => setEditingDate(null)}>
-        <form onSubmit={handleSubmit}>
-          <h2 className="form-title">Edit menu</h2>
-          <p className="form-subtitle">{editingDate}</p>
-
-          <div className="form-field">
-            <label htmlFor="breakfast">Breakfast</label>
-            <input id="breakfast" value={form.breakfast} onChange={(e) => setForm({ ...form, breakfast: e.target.value })} />
-          </div>
-          <div className="form-field">
-            <label htmlFor="lunch">Lunch</label>
-            <input id="lunch" value={form.lunch} onChange={(e) => setForm({ ...form, lunch: e.target.value })} />
-          </div>
-          <div className="form-field">
-            <label htmlFor="snack">Snack</label>
-            <input id="snack" value={form.snack} onChange={(e) => setForm({ ...form, snack: e.target.value })} />
-          </div>
-
-          <button type="submit" className="form-submit" disabled={submitting}>
-            {submitting ? "Saving..." : "Save"}
-          </button>
-        </form>
-      </Modal>
     </div>
   );
 }

@@ -3,6 +3,16 @@ import { signOut } from "firebase/auth";
 import { auth } from "../../lib/firebase";
 import "./DashboardLayout.css";
 
+function IconLogout() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 21H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3" />
+      <path d="M16 17l5-5-5-5" />
+      <path d="M21 12H9" />
+    </svg>
+  );
+}
+
 export default function DashboardLayout({ title, navItems = [], children }) {
   return (
     <div className="dashboard-wrapper">
@@ -15,17 +25,24 @@ export default function DashboardLayout({ title, navItems = [], children }) {
               key={item.to}
               to={item.to}
               end
+              title={item.label}
               className={({ isActive }) =>
                 isActive ? "dashboard-nav-link active" : "dashboard-nav-link"
               }
             >
-              {item.label}
+              <span className="dashboard-nav-icon">
+                <item.Icon />
+              </span>
+              <span className="dashboard-nav-label">{item.label}</span>
             </NavLink>
           ))}
         </nav>
 
-        <button onClick={() => signOut(auth)} className="dashboard-logout">
-          Log out
+        <button onClick={() => signOut(auth)} className="dashboard-logout" title="Log out">
+          <span className="dashboard-nav-icon">
+            <IconLogout />
+          </span>
+          <span className="dashboard-nav-label">Log out</span>
         </button>
       </aside>
 

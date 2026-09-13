@@ -1,12 +1,18 @@
 import { useState } from "react";
-import { addDoc, collection, serverTimestamp } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { db } from "../../lib/firebase";
 import Modal from "../UI/Modal";
+import { IconPencil, IconTrash, IconCheck, IconX } from "../UI/ActionIcons";
 
 export default function ClassSection({ schoolId, classes, loading, onChanged }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [name, setName] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  const [editingId, setEditingId] = useState(null);
+  const [editName, setEditName] = useState("");
+  const [savingId, setSavingId] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -19,6 +25,36 @@ export default function ClassSection({ schoolId, classes, loading, onChanged }) 
     setSubmitting(false);
     setName("");
     setModalOpen(false);
+    onChanged();
+  }
+
+  function startEdit(classItem) {
+    setEditingId(classItem.id);
+    setEditName(classItem.name);
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setEditName("");
+  }
+
+  async function saveEdit(classId) {
+    if (!editName.trim()) return;
+    setSavingId(classId);
+    await updateDoc(doc(db, "schools", schoolId, "classes", classId), {
+      name: editName.trim(),
+    });
+    setSavingId(null);
+    setEditingId(null);
+    setEditName("");
+    onChanged();
+  }
+
+  async function handleDelete(classId, className) {
+    if (!window.confirm(`Delete "${className}"? Children assigned to it will show as unassigned.`)) return;
+    setDeletingId(classId);
+    await deleteDoc(doc(db, "schools", schoolId, "classes", classId));
+    setDeletingId(null);
     onChanged();
   }
 
@@ -35,9 +71,58 @@ export default function ClassSection({ schoolId, classes, loading, onChanged }) 
         <p>No classes yet — create your first one.</p>
       ) : (
         <ul className="chip-list">
-          {classes.map((c) => (
-            <li key={c.id} className="chip">{c.name}</li>
-          ))}
+          {classes.map((c) =>
+            editingId === c.id ? (
+              <li key={c.id} className="chip">
+                <input
+                  className="inline-edit-input"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  autoFocus
+                />
+                <span className="chip-actions">
+                  <button
+                    type="button"
+                    className="icon-btn icon-btn--confirm"
+                    onClick={() => saveEdit(c.id)}
+                    disabled={savingId === c.id}
+                    aria-label="Save"
+                    title="Save"
+                  >
+                    <IconCheck />
+                  </button>
+                  <button type="button" className="icon-btn" onClick={cancelEdit} aria-label="Cancel" title="Cancel">
+                    <IconX />
+                  </button>
+                </span>
+              </li>
+            ) : (
+              <li key={c.id} className="chip">
+                {c.name}
+                <span className="chip-actions">
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    onClick={() => startEdit(c)}
+                    aria-label="Edit"
+                    title="Edit"
+                  >
+                    <IconPencil />
+                  </button>
+                  <button
+                    type="button"
+                    className="icon-btn icon-btn--danger"
+                    onClick={() => handleDelete(c.id, c.name)}
+                    disabled={deletingId === c.id}
+                    aria-label="Delete"
+                    title="Delete"
+                  >
+                    <IconTrash />
+                  </button>
+                </span>
+              </li>
+            )
+          )}
         </ul>
       )}
 
