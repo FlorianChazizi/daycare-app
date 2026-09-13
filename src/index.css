@@ -16,4 +16,5 @@ body {
   font-family: system-ui, -apple-system, sans-serif;
   background: var(--color-bg);
   color: var(--color-text);
+  scroll-behavior: smooth;
 }
