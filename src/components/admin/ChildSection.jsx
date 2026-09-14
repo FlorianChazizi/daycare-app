@@ -11,8 +11,10 @@ export default function ChildSection({ schoolId, classes }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState({ name: "", classId: "" });
   const [submitting, setSubmitting] = useState(false);
-  const [codes, setCodes] = useState({});
-  const [generating, setGenerating] = useState(null);
+
+  const [parentEmails, setParentEmails] = useState({});
+  const [creatingParent, setCreatingParent] = useState(null);
+  const [parentResults, setParentResults] = useState({});
 
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({ name: "", classId: "" });
@@ -51,17 +53,27 @@ export default function ChildSection({ schoolId, classes }) {
     loadChildren();
   }
 
-  async function generateCode(childId) {
-    setGenerating(childId);
+  async function handleCreateParent(childId) {
+    const email = (parentEmails[childId] || "").trim();
+    if (!email) return;
+    setCreatingParent(childId);
+    setParentResults((prev) => ({ ...prev, [childId]: null }));
     try {
       const functions = getFunctions();
-      const generateChildInviteCode = httpsCallable(functions, "generateChildInviteCode");
-      const result = await generateChildInviteCode({ childId });
-      setCodes((prev) => ({ ...prev, [childId]: result.data.code }));
+      const createParentAccount = httpsCallable(functions, "createParentAccount");
+      const result = await createParentAccount({ email, childId });
+      const data = result.data;
+      setParentResults((prev) => ({
+        ...prev,
+        [childId]: data.isNewAccount
+          ? { type: "success", message: `Created. Temporary password: ${data.temporaryPassword}` }
+          : { type: "success", message: `Linked to existing parent account (${email}).` },
+      }));
+      setParentEmails((prev) => ({ ...prev, [childId]: "" }));
     } catch (err) {
-      setCodes((prev) => ({ ...prev, [childId]: `Error: ${err.message}` }));
+      setParentResults((prev) => ({ ...prev, [childId]: { type: "error", message: err.message } }));
     } finally {
-      setGenerating(null);
+      setCreatingParent(null);
     }
   }
 
@@ -116,13 +128,14 @@ export default function ChildSection({ schoolId, classes }) {
               <tr>
                 <th>Name</th>
                 <th>Class</th>
-                <th>Invite code</th>
+                <th>Parent login</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {children.map((child) => {
                 const isEditing = editingId === child.id;
+                const result = parentResults[child.id];
                 return (
                   <tr key={child.id}>
                     <td>
@@ -154,18 +167,28 @@ export default function ChildSection({ schoolId, classes }) {
                       )}
                     </td>
                     <td>
-                      {codes[child.id] ? (
-                        <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <code style={{ fontSize: 13, fontWeight: 500 }}>{codes[child.id]}</code>
-                          <button className="btn" onClick={() => generateCode(child.id)} disabled={generating === child.id}>
-                            Regenerate
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 220 }}>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <input
+                            type="email"
+                            placeholder="parent@email.com"
+                            className="inline-edit-input"
+                            style={{ flex: 1 }}
+                            value={parentEmails[child.id] || ""}
+                            onChange={(e) => setParentEmails((prev) => ({ ...prev, [child.id]: e.target.value }))}
+                          />
+                          <button
+                            className="btn"
+                            onClick={() => handleCreateParent(child.id)}
+                            disabled={creatingParent === child.id || !(parentEmails[child.id] || "").trim()}
+                          >
+                            {creatingParent === child.id ? "Creating..." : "Create login"}
                           </button>
-                        </span>
-                      ) : (
-                        <button className="btn" onClick={() => generateCode(child.id)} disabled={generating === child.id}>
-                          {generating === child.id ? "Generating..." : "Generate code"}
-                        </button>
-                      )}
+                        </div>
+                        {result && (
+                          <span className={`status-message ${result.type}`}>{result.message}</span>
+                        )}
+                      </div>
                     </td>
                     <td>
                       {isEditing ? (

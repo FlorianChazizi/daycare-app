@@ -39,30 +39,6 @@ exports.createStaffAccount = onCall(async (request) => {
   return { uid: userRecord.uid };
 });
 
-exports.generateChildInviteCode = onCall(async (request) => {
-  const caller = request.auth;
-  if (!caller || caller.token.role !== "admin") {
-    throw new HttpsError("permission-denied", "Only school admins can generate invite codes.");
-  }
-
-  const { childId } = request.data;
-  if (!childId) throw new HttpsError("invalid-argument", "childId is required.");
-
-  const schoolId = caller.token.schoolId;
-  const code = Math.random().toString(36).slice(2, 8).toUpperCase();
-
-  await admin.firestore()
-    .collection("schools").doc(schoolId)
-    .collection("inviteCodes").doc(code)
-    .set({
-       code,
-        childId,
-        used: false,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
-
-  return { code };
-});
 
 exports.bootstrapSuperAdmin = onCall({ secrets: [bootstrapSecret] }, async (request) => {
   const { email, password, secret } = request.data;
@@ -122,63 +98,6 @@ exports.createSchool = onCall(async (request) => {
   return { uid: userRecord.uid, schoolId };
 });
 
-exports.redeemInviteCode = onCall(async (request) => {
-  const caller = request.auth;
-  if (!caller) {
-    throw new HttpsError("unauthenticated", "You must be signed in.");
-  }
-
-  const { code } = request.data;
-  if (!code) {
-    throw new HttpsError("invalid-argument", "code is required.");
-  }
-
-  const normalizedCode = code.trim().toUpperCase();
-
-  const matches = await admin.firestore()
-    .collectionGroup("inviteCodes")
-    .where("code", "==", normalizedCode)
-    .limit(1)
-    .get();
-
-  if (matches.empty) {
-    throw new HttpsError("not-found", "Invalid invite code.");
-  }
-
-  const codeDoc = matches.docs[0];
-  const codeData = codeDoc.data();
-
-  if (codeData.used) {
-    throw new HttpsError("failed-precondition", "This code has already been used.");
-  }
-
-  const schoolRef = codeDoc.ref.parent.parent;
-  const schoolId = schoolRef.id;
-  const childId = codeData.childId;
-
-  await admin.auth().setCustomUserClaims(caller.uid, { role: "parent", schoolId });
-
-  const parentRef = schoolRef.collection("parents").doc(caller.uid);
-  const parentSnap = await parentRef.get();
-  const existingChildren = parentSnap.exists ? (parentSnap.data().children || []) : [];
-  const updatedChildren = existingChildren.includes(childId)
-    ? existingChildren
-    : [...existingChildren, childId];
-
-  await parentRef.set({
-    phone: caller.token.phone_number || null,
-    children: updatedChildren,
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-  }, { merge: true });
-
-  await codeDoc.ref.update({
-    used: true,
-    redeemedBy: caller.uid,
-    redeemedAt: admin.firestore.FieldValue.serverTimestamp(),
-  });
-
-  return { schoolId, childId };
-});
 
 exports.deleteStaffAccount = onCall(async (request) => {
   const caller = request.auth;
@@ -208,4 +127,69 @@ exports.deleteStaffAccount = onCall(async (request) => {
 
   logger.info(`Deleted staff ${uid} from school ${schoolId}`);
   return { uid };
+});
+
+
+exports.createParentAccount = onCall(async (request) => {
+  const caller = request.auth;
+  if (!caller || caller.token.role !== "admin") {
+    throw new HttpsError("permission-denied", "Only school admins can create parent accounts.");
+  }
+
+  const { email, childId } = request.data;
+  if (!email || !childId) {
+    throw new HttpsError("invalid-argument", "email and childId are required.");
+  }
+
+  const schoolId = caller.token.schoolId;
+
+  const childRef = admin.firestore()
+    .collection("schools").doc(schoolId)
+    .collection("children").doc(childId);
+  const childSnap = await childRef.get();
+  if (!childSnap.exists) {
+    throw new HttpsError("not-found", "Child not found in your school.");
+  }
+
+  let userRecord = null;
+  let isNewAccount = false;
+  let temporaryPassword = null;
+
+  try {
+    userRecord = await admin.auth().getUserByEmail(email);
+  } catch (err) {
+    if (err.code !== "auth/user-not-found") throw err;
+  }
+
+  if (userRecord) {
+    const existingClaims = userRecord.customClaims || {};
+    if (existingClaims.role !== "parent" || existingClaims.schoolId !== schoolId) {
+      throw new HttpsError("already-exists", "This email is already used by a different account.");
+    }
+  } else {
+    temporaryPassword = Math.floor(100000 + Math.random() * 900000).toString();
+    userRecord = await admin.auth().createUser({ email, password: temporaryPassword });
+    await admin.auth().setCustomUserClaims(userRecord.uid, { role: "parent", schoolId });
+    isNewAccount = true;
+  }
+
+  const parentRef = admin.firestore()
+    .collection("schools").doc(schoolId)
+    .collection("parents").doc(userRecord.uid);
+  const parentSnap = await parentRef.get();
+  const existingChildren = parentSnap.exists ? (parentSnap.data().children || []) : [];
+  const updatedChildren = existingChildren.includes(childId) ? existingChildren : [...existingChildren, childId];
+
+  await parentRef.set(
+    {
+      email,
+      children: updatedChildren,
+  mustChangePassword: isNewAccount || !parentSnap.exists ? true : (parentSnap.data().mustChangePassword ?? false),
+      ...(isNewAccount ? { createdAt: admin.firestore.FieldValue.serverTimestamp() } : {}),
+    },
+    { merge: true }
+  );
+
+  logger.info(`${isNewAccount ? "Created" : "Linked"} parent ${userRecord.uid} to child ${childId} in school ${schoolId}`);
+  return { uid: userRecord.uid, isNewAccount, temporaryPassword };
 });
